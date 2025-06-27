@@ -2,7 +2,7 @@ const { app, BrowserWindow, globalShortcut, ipcMain } = require('electron');
 const path = require('path');
 const {GoogleGenAI} = require("@google/genai");
 const isDev = require('electron-is-dev'); // Import electron-is-dev
-
+require('dotenv').config()
 let mainWindow;;
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -22,7 +22,6 @@ function createWindow() {
   });
   
   
-  // Determine the URL to load based on development or production environment
   const startURL = isDev
   ? 'http://localhost:5173' // In development, load from Vite's dev server
   : `file://${path.join(__dirname, './frontend/dist/index.html')}`; // In production, load the built file
@@ -72,32 +71,29 @@ app.on('will-quit', () => {
 });
 
 
-ipcMain.on("button-clicked", (event, message) => {
-  console.log(`Message from React:`, message);
 
-})
-
+const API_KEY = process.env.GEMINI_API_KEY
 ipcMain.on("start-generating-stream", async (event, message) => {
-  const ai = new GoogleGenAI({apiKey : ""})
+  const ai = new GoogleGenAI({apiKey : API_KEY})
 
   try {
     
       const response = await ai.models.generateContentStream({
         "model" : "gemini-2.5-flash",
         "contents" : message,
+        generationConfig: {
+          maxOutputTokens: 100,
+        },
       })
     
       for await (const chunk of response) {
         const chunkText = chunk.text;
-        console.log(chunkText);
           if (chunkText) {
-            console.log('Main Process: Sending chunk:', chunkText);
             event.sender.send('ai-text-chunk', chunkText);
           }
       }
     
       event.sender.send('ai-stream-end');
-      console.log('Main Process: AI stream finished.');
   } catch (error) {
     console.error('Main Process: Error during streaming AI generation:', error);
     // Send an error message or signal to the renderer

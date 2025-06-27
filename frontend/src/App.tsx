@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState} from "react"
 import "./index.css"
+import ReactMarkdown, { type Components } from 'react-markdown';
+
+import remarkGfm from 'remark-gfm'; 
+
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { dracula } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
 
 
 declare global {
@@ -22,7 +29,6 @@ function App() {
   const [isSuggestionShowing, setIsSuggestionShowing] = useState(false);
   const [displayedText, setDisplayedText] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -111,6 +117,27 @@ function App() {
     }
   };
 
+  const components: Components = {
+    // @ts-ignore //Solve the type error
+    code({ node, inline, className, children, ...props }) {
+      const match = /language-(\w+)/.exec(className || '');
+      return !inline && match ? (
+        <SyntaxHighlighter
+          style={ dracula}
+          language={match[1]}
+          PreTag="div"
+          // {...props}
+        >
+          {String(children).replace(/\n$/, '')}
+        </SyntaxHighlighter>
+      ) : (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+  };
+
 
   return (
     <>
@@ -147,7 +174,7 @@ function App() {
     </div>
   )}
 
-      {(isGenerating || displayedText.length > 0 || generationError) && (
+{(isGenerating || displayedText.length > 0 || generationError) && (
         <div className="ai-response-container">
           {isGenerating && (
             <div className="loading-spinner"></div>
@@ -155,7 +182,12 @@ function App() {
           {generationError ? (
             <p className="ai-text error-text" style={{ color: '#ff6b6b' }}>{generationError}</p>
           ) : (
-            <p className="ai-text">{displayedText}</p>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={components}
+            >
+              {displayedText}
+            </ReactMarkdown>
           )}
         </div>
       )}
