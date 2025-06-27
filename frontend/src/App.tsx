@@ -4,49 +4,111 @@ import "./index.css"
 
 declare global {
   interface Window {
-    electronAPI : {
-      sendButtonClick : (message : string) => void;
-    }
+    electronAPI: {
+      sendButtonClick: (message: string) => void;
+      startGenerateStream: (prompt: string) => void; // Changed to void as it's a one-way trigger
+      onAiTextChunk: (callback: (chunk: string) => void) => () => void; // Returns a cleanup function
+      onAiStreamEnd: (callback: () => void) => () => void; // Returns a cleanup function
+      onAiStreamError: (callback: (errorMsg: string) => void) => () => void; // Returns a cleanup function
+    };
   }
 }
+
+
+
 function App() {
-  const inputRef = useRef<HTMLInputElement >(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState<string | null>(null);
   const [isSuggestionShowing, setIsSuggestionShowing] = useState(false);
+  const [displayedText, setDisplayedText] = useState<string>("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   useEffect(() => {
     if(inputRef.current){
       inputRef.current.focus()
+
+
     }
   },[])
 
   useEffect(() => {
     if (isSuggestionShowing) {
       window.resizeTo(600, 400);
-    } else {
-      window.resizeTo(600, 80);
-    }
+    } 
   }, [isSuggestionShowing]);
+
+
+  useEffect(() => {
+    console.log(displayedText);
+  },[displayedText])
+
+
+  useEffect(() => {
+    console.log(window.electronAPI);
+    const cleanupChunkListener = window.electronAPI.onAiTextChunk((chunk) => {
+      setDisplayedText((prev) => prev + chunk);
+    });
+
+    const cleanupEndListener = window.electronAPI.onAiStreamEnd(() => {
+      setIsGenerating(false);
+      console.log("AI Stream Ended.");
+    });
+
+    const cleanupErrorListener = window.electronAPI.onAiStreamError((errorMsg) => {
+      setGenerationError(errorMsg);
+      setIsGenerating(false);
+      setDisplayedText(""); // Clear any partial text if an error occurs
+      console.error("AI Stream Error:", errorMsg);
+    });
+
+    // Return cleanup functions
+    return () => {
+      cleanupChunkListener();
+      cleanupEndListener();
+      cleanupErrorListener();
+    };
+  }, []);
 
    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value;
     setInput(inputValue);
 
 
+    if (inputValue.trim().length > 0) {
+      setDisplayedText("");
+      setGenerationError(null);
+      setIsGenerating(false); // Stop any ongoing generation if user types
+  }
+
+
     setIsSuggestionShowing(inputValue.trim().length > 0);
   };
+  
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       setIsSuggestionShowing(false);
-      console.log(window);
-      window.electronAPI.sendButtonClick("Hello I a clicked")
-      console.log("Input submitted:", input);
+      if (input && input.trim().length > 0 && !isGenerating) { // Prevent multiple generations
+        setIsGenerating(true); // Start loading
+        setDisplayedText(""); // Clear previous response
+        setGenerationError(null); // Clear previous error
+        
+        // Start the streaming generation from the main process
+        window.electronAPI.startGenerateStream(input);
+        
+        setInput(""); // Clear input field immediately
+        if (inputRef.current) {
+            inputRef.current.value = "";
+        }
+      }
     } else if (e.key === "Escape") {
       setIsSuggestionShowing(false);
-      
+      setDisplayedText(""); // Clear displayed text on escape
+      setGenerationError(null); // Clear error on escape
+      setIsGenerating(false); // Stop any ongoing generation
     }
-    
   };
 
 
@@ -83,9 +145,20 @@ function App() {
             <div className="suggestion-description">Chat with Anthropic Claude</div>
         </div>
     </div>
-  )
+  )}
 
-}
+      {(isGenerating || displayedText.length > 0 || generationError) && (
+        <div className="ai-response-container">
+          {isGenerating && (
+            <div className="loading-spinner"></div>
+          )}
+          {generationError ? (
+            <p className="ai-text error-text" style={{ color: '#ff6b6b' }}>{generationError}</p>
+          ) : (
+            <p className="ai-text">{displayedText}</p>
+          )}
+        </div>
+      )}
   </>
   )
 }
